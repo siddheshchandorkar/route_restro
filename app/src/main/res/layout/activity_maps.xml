@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layout xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <data>
+        <variable
+            name="vm"
+            type="com.siddhesh.heretest.MapActivityViewModel" />
+    </data>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+        <androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+            xmlns:map="http://schemas.android.com/apk/res-auto"
+            xmlns:tools="http://schemas.android.com/tools"
+            android:id="@+id/map"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:padding="16dp"
+            >
+            <EditText
+                android:id="@+id/et_source"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@={vm.source}"
+                android:maxLines="2"
+                android:hint="@string/enter_source_location"
+                map:layout_constraintTop_toTopOf="parent"/>
+
+            <TextView
+                android:id="@+id/tv_to"
+                android:layout_width="wrap_content"
+                android:text="@string/to"
+                android:layout_marginTop="5dp"
+                map:layout_constraintStart_toStartOf="parent"
+                map:layout_constraintEnd_toEndOf="parent"
+                map:layout_constraintTop_toBottomOf="@id/et_source"
+                android:layout_height="wrap_content"/>
+            <EditText
+                android:id="@+id/et_destination"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/enter_destination_location"
+                android:layout_marginTop="5dp"
+                android:text="@={vm.destination}"
+                android:maxLines="2"
+                map:layout_constraintTop_toBottomOf="@id/tv_to"/>
+            <com.here.sdk.mapviewlite.MapViewLite
+                android:id="@+id/map_view"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"
+                map:layout_constraintBottom_toTopOf="@id/btn_view_list"
+                map:layout_constraintTop_toBottomOf="@id/et_destination"/>
+
+            <Button
+                android:id="@+id/btn_view_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:padding="10dp"
+                android:text="@string/view_restaurant_list"
+                map:layout_constraintBottom_toBottomOf="parent"/>
+
+
+        </androidx.constraintlayout.widget.ConstraintLayout>
+
+        <LinearLayout
+            android:id="@+id/ll_loading"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@color/black"
+            android:clickable="true"
+            android:orientation="vertical"
+            android:alpha="0.5"
+            android:visibility="gone"
+            android:gravity="center"
+            android:focusable="true">
+            <ProgressBar
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"/>
+            <TextView
+                android:id="@+id/tv_desc"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/white"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:text="@string/fetching_current_location"/>
+        </LinearLayout>
+    </FrameLayout>
+
+</layout>
