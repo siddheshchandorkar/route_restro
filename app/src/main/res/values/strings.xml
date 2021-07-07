@@ -9,4 +9,8 @@
     <string name="view_restaurant_list">View Restaurant List</string>
     <string name="fetching_current_location">Fetching Current Location...</string>
     <string name="fetching_restaurants">Fetching Restaurants...</string>
+    <string name="no_place_found">No Place Found</string>
+    <string name="restaurant_along_route">Restaurants Along Your Route</string>
+    <string name="cancel">cancel</string>
+    <string name="not_restaurant_found">No restaurant found along the route.</string>
 </resources>

@@ -5,10 +5,10 @@ import android.text.TextUtils
 import android.util.Log
 import android.view.View
 import android.widget.AdapterView.OnItemClickListener
-import android.widget.EditText
 import android.widget.ListPopupWindow
 import android.widget.Toast
 import androidx.annotation.NonNull
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
 import com.here.sdk.core.*
@@ -22,6 +22,9 @@ import com.here.sdk.search.*
 import com.here.sdk.search.SearchCallback
 import com.siddhesh.heretest.PlatformPositioningProvider.PlatformLocationListener
 import com.siddhesh.heretest.databinding.ActivityMapsBinding
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.util.*
 import kotlin.collections.ArrayList
 
@@ -30,7 +33,6 @@ class MapsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMapsBinding
 
-    //    val mapPolyline = createPolyline()
     lateinit var mapScene: MapScene
     var maxItems = 30 //maximum search result count
     var searchOptions = SearchOptions(LanguageCode.EN_US, maxItems)
@@ -38,21 +40,28 @@ class MapsActivity : AppCompatActivity() {
     lateinit var mapActivityViewModel: MapActivityViewModel
     val sourceList: ArrayList<Place> = ArrayList<Place>()
     val destinationList: ArrayList<Place> = ArrayList<Place>()
-    lateinit var sourceCoordinates: GeoCoordinates
-    lateinit var destinationCoordinates: GeoCoordinates
+    lateinit var sourcePlace: Place
+    lateinit var destinationPlace: Place
     private var routingEngine: RoutingEngine? = null
     private lateinit var permissionsRequestor: PermissionsRequestor
     private var viewportGeoBox: GeoBox? = null
     private var isSourceSearch = true
+    private var isSourceSelected = false
+    private var isDestinationSelected = false
     private lateinit var platformPositioningProvider: PlatformPositioningProvider
     private lateinit var selectedGeoCoordinates: GeoCoordinates
     private lateinit var currentLocation: Location
     private lateinit var routeGeoPolyline: GeoPolyline
+    private var restaurantMarkers = ArrayList<MapMarker>()
+    private var restaurantList = ArrayList<String>()
+    private var restaurantPlaceList = ArrayList<Place>()
     private lateinit var currentMarker: MapMarker
-    private lateinit var sourceMarker: MapMarker
-    private lateinit var destinationMarker: MapMarker
-    private lateinit var routeMapPolyline: MapPolyline
-
+    private var sourceMarker: MapMarker? = null
+    private var destinationMarker: MapMarker? = null
+    private var routeMapPolyline: MapPolyline? = null
+    private lateinit var sourcePopupList: ListPopupWindow
+    private lateinit var destinationPopupList: ListPopupWindow
+    private val searchKey = "restaurants"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,7 +100,8 @@ class MapsActivity : AppCompatActivity() {
     private fun initView(savedInstanceState: Bundle?) {
         binding.mapView.onCreate(savedInstanceState)
         platformPositioningProvider = PlatformPositioningProvider(this)
-
+        sourcePopupList = ListPopupWindow(this)
+        destinationPopupList = ListPopupWindow(this)
         try {
             searchEngine = SearchEngine()
             routingEngine = RoutingEngine()
@@ -102,6 +112,7 @@ class MapsActivity : AppCompatActivity() {
 
         mapActivityViewModel.source.observeForever {
 
+            isSourceSelected = false
             isSourceSearch = true
             if (viewportGeoBox != null && !TextUtils.isEmpty(it) && it.length > 2) {
                 searchEngine.search(
@@ -114,6 +125,7 @@ class MapsActivity : AppCompatActivity() {
         }
         mapActivityViewModel.destination.observeForever {
             isSourceSearch = false
+            isDestinationSelected = false
             if (viewportGeoBox != null && !TextUtils.isEmpty(it) && it.length > 2) {
                 searchEngine.search(
                     TextQuery(it, viewportGeoBox!!),
@@ -132,31 +144,14 @@ class MapsActivity : AppCompatActivity() {
                     it.altitude
                 )
                 addCurrentMapMarker(selectedGeoCoordinates)
-
                 currentLocation = Location(selectedGeoCoordinates, Date())
-                binding.mapView.mapScene.loadScene(MapStyle.NORMAL_DAY,
-                    LoadSceneCallback { errorCode ->
-                        if (errorCode == null) {
-//                                binding.mapView.camera.target =  GeoCoordinates(52.530932, 13.384915)
-                            binding.mapView.camera.target = selectedGeoCoordinates
-                            binding.mapView.camera.zoomLevel = 12.0
-                            mapScene = binding.mapView.mapScene
-                            viewportGeoBox = binding.mapView.camera.boundingBox
-
-
-//                    mapScene.addMapPolyline(mapPolyline!!)
-
-                        } else {
-                            Log.d("Siddhesh", "onLoadScene failed: $errorCode")
-                        }
-                    })
             }
         }
 
     }
 
     private fun loadMapScene() {
-        // Load a scene from the SDK to render the map with a map style.
+
         Log.d("siddhesh", "Checking loadMapScene : ")
 
 //        binding.llLoading.visibility= View.VISIBLE
@@ -166,7 +161,7 @@ class MapsActivity : AppCompatActivity() {
                 Log.d("siddhesh", "Checking onLocationUpdated location: " + location)
                 mapActivityViewModel.currentLocation.value = location!!
                 platformPositioningProvider.stopLocating()
-
+                binding.icCurrentLocation.visibility = View.VISIBLE
             }
 
 
@@ -174,14 +169,12 @@ class MapsActivity : AppCompatActivity() {
         binding.mapView.mapScene.loadScene(MapStyle.NORMAL_DAY,
             LoadSceneCallback { errorCode ->
                 if (errorCode == null) {
-                    binding.mapView.camera.target = GeoCoordinates(52.530932, 13.384915)
-//                    binding.mapView.camera.target =  GeoCoordinates(it.latitude, it.longitude)
-                    binding.mapView.camera.zoomLevel = 12.0
+                    binding.mapView.camera.target = GeoCoordinates(20.5937, 78.9629) // Set India as default location
+                    binding.mapView.camera.zoomLevel = 3.0
                     mapScene = binding.mapView.mapScene
                     viewportGeoBox = binding.mapView.camera.boundingBox
                     setTapGestureHandler()
 
-//                    mapScene.addMapPolyline(mapPolyline!!)
 
                 } else {
                     Log.d("Siddhesh", "onLoadScene failed: $errorCode")
@@ -192,142 +185,98 @@ class MapsActivity : AppCompatActivity() {
     }
 
 
-    private val querySearchCallback =
-        SearchCallback { searchError, list ->
-            if (searchError != null) {
-                Log.d("Siddhesh", "Error: $searchError")
-//                showDialog("Search", "Error: $searchError")
-                return@SearchCallback
-            }
+    private val querySearchCallback = SearchCallback { searchError, list ->
+        if (searchError != null) {
+            Log.d("Siddhesh", "Error: $searchError")
+            return@SearchCallback
+        }
 
-            // If error is null, list is guaranteed to be not empty.
-//            showDialog("Search", "Results: " + list!!.size)
-            Log.d("Siddhesh", "Results: " + list!!.size)
-
-
-            // Add new marker for each search result on map.
+        if (list != null) {
             if (isSourceSearch) {
-                sourceList.clear()
+                reset() //remove  polyline & clear list
                 for (searchResult in list) {
                     sourceList.add(searchResult)
                     binding.mapView.camera.target = searchResult.geoCoordinates!!
-                    // ...
                     Log.d("Siddhesh", "Search Source Values: " + searchResult.title)
                 }
-
-
-                setPopupList(sourceList, binding.etSource)
+//                    if(!isSourceSelected){
+                setSourcePopupList()
+//                    }
             } else {
                 destinationList.clear()
                 for (searchResult in list) {
                     destinationList.add(searchResult)
-                    // ...
                     Log.d("Siddhesh", "Search Destination Values: " + searchResult.title)
                 }
-
-                setPopupList(destinationList, binding.etDestination)
-
+//                    if(isDestinationSelected){
+                setDestinationPopupList()
+//                    }
 
             }
-
-
+        } else {
+            Toast.makeText(this, getString(R.string.no_place_found), Toast.LENGTH_SHORT).show()
+            sourcePopupList.dismiss()
+            destinationPopupList.dismiss()
         }
 
 
-    /*
-    * To create polyline on map for given location coordinates
-    * */
-    private fun createPolyline(): MapPolyline? {
-        val coordinates: ArrayList<GeoCoordinates> = ArrayList()
-        coordinates.add(GeoCoordinates(52.53032, 13.37409))
-        coordinates.add(GeoCoordinates(52.5309, 13.3946))
-        coordinates.add(GeoCoordinates(52.53894, 13.39194))
-        coordinates.add(GeoCoordinates(52.54014, 13.37958))
-        val geoPolyline: GeoPolyline = try {
-            GeoPolyline(coordinates)
-        } catch (e: InstantiationErrorException) {
-            // Less than two vertices.
-            return null
-        }
-        val mapPolylineStyle = MapPolylineStyle()
-        mapPolylineStyle.widthInPixels = 10.0
-        mapPolylineStyle.setColor(-0xffff60, PixelFormat.RGBA_8888)
-        return MapPolyline(geoPolyline, mapPolylineStyle)
     }
 
-    /*
-    * Search Restaurant for specific coordinates
-    * */
-    private fun searchForCategories() {
-        val categoryList: MutableList<PlaceCategory> = ArrayList()
-        categoryList.add(PlaceCategory(PlaceCategory.EAT_AND_DRINK_RESTAURANT))
-//        val categoryQuery = CategoryQuery(categoryList, GeoCoordinates(52.520798, 13.409408))
-        val categoryQuery = CategoryQuery(categoryList, GeoCoordinates(18.9943, 72.8213))
-        val maxItems = 100
-        val searchOptions = SearchOptions(LanguageCode.EN_US, maxItems)
-        searchEngine.search(categoryQuery, searchOptions,
-            SearchCallback { searchError, list ->
-                if (searchError != null) {
-                    Log.d("Siddhesh", "Search Error: $searchError")
 
-                    return@SearchCallback
-                }
+    private fun setSourcePopupList() {
 
-                // If error is null, list is guaranteed to be not empty.
-                val numberOfResults = "Search results: " + list!!.size + ". See log for details."
-                Log.d("Siddhesh", numberOfResults)
+        sourcePopupList.anchorView = binding.etSource
 
-                list.sortBy { it.title }
-                for (i in 0 until list.size) {
-                    if (i == 0) {
-                        sourceCoordinates = list[i].geoCoordinates!!
-//                        addMapMarker(sourceCoordinates, R.drawable.ic_marker)
-                    } else {
-                        destinationCoordinates = list[i].geoCoordinates!!
+        sourcePopupList.setAdapter(PlaceAdapter(this, sourceList, false))
+        sourcePopupList.setOnItemClickListener(OnItemClickListener { parent, view, position, id ->
 
-                    }
+            isSourceSelected = true
+            binding.etSource.setText(sourceList[position].title)
+            sourcePlace = sourceList[position]
+            addSourceMapMarker()
+            sourcePopupList.dismiss()
 
-                }
-//                for (searchResult in list) {
-//                    val addressText = searchResult.address.addressText
-//                    Log.d("Siddhesh", searchResult.title + "," + addressText)
-//                }
-            })
-    }
-
-    private fun setPopupList(placeList: ArrayList<Place>, editText: EditText) {
-
-        val statusPopupList = ListPopupWindow(this)
-
-
-        statusPopupList.anchorView = editText
-        statusPopupList.setAdapter(PlaceAdapter(this, placeList))
-        statusPopupList.setOnItemClickListener(OnItemClickListener { parent, view, position, id ->
-            if (isSourceSearch) {
-                binding.etSource.setText(placeList[position].title)
-                sourceCoordinates = placeList[position].geoCoordinates!!
-                addSourceMapMarker()
-
-            } else {
-                binding.etDestination.setText(placeList[position].title)
-                destinationCoordinates = placeList[position].geoCoordinates!!
-                addDestinationMapMarker()
-                getRoute()
-
-            }
-            statusPopupList.dismiss()
         })
 
-        statusPopupList.show()
+        if (sourcePopupList.isShowing) {
+            sourcePopupList.dismiss()
+        }
+        sourcePopupList.show()
+    }
+
+    private fun setDestinationPopupList() {
+
+        destinationPopupList.anchorView = binding.etDestination
+
+        destinationPopupList.setAdapter(PlaceAdapter(this, destinationList, false))
+        destinationPopupList.setOnItemClickListener(OnItemClickListener { parent, view, position, id ->
+            binding.etDestination.setText(destinationList[position].title)
+            isDestinationSelected = true
+            destinationPlace = destinationList[position]
+            addDestinationMapMarker()
+            CoroutineScope(Dispatchers.Main).launch {
+                getRoute()
+            }
+            destinationPopupList.dismiss()
+
+        })
+
+        if (destinationPopupList.isShowing) {
+            destinationPopupList.dismiss()
+        }
+        destinationPopupList.show()
     }
 
     private fun getRoute() {
 
         val waypoints: ArrayList<Waypoint> = java.util.ArrayList()
-        waypoints.add(Waypoint(sourceCoordinates))
-        waypoints.add(Waypoint(destinationCoordinates))
+        waypoints.add(Waypoint(sourcePlace.geoCoordinates!!))
+        waypoints.add(Waypoint(destinationPlace.geoCoordinates!!))
 
-        routingEngine!!.calculateRoute(waypoints, CarOptions()) { routingError, routes ->
+        val carOptions = CarOptions()
+        carOptions.routeOptions.optimizationMode =
+            OptimizationMode.SHORTEST //to get less no of coordinates on polyline
+        routingEngine!!.calculateRoute(waypoints, carOptions) { routingError, routes ->
             if (routingError == null) {
                 val route = routes!![0]
                 showRouteDetails(route)
@@ -352,110 +301,154 @@ class MapsActivity : AppCompatActivity() {
     }
 
     private fun showRouteOnMap(route: Route) {
-        // Show route as polyline.
 
         routeGeoPolyline = try {
             GeoPolyline(route.polyline)
         } catch (e: InstantiationErrorException) {
-            // It should never happen that the route polyline contains less than two vertices.
+            e.printStackTrace()
             return
         }
         val mapPolylineStyle = MapPolylineStyle()
         mapPolylineStyle.setColor(0x00908AA0, PixelFormat.RGBA_8888)
         mapPolylineStyle.widthInPixels = 8.0
         routeMapPolyline = MapPolyline(routeGeoPolyline, mapPolylineStyle)
-            binding.mapView.mapScene.removeMapPolyline(routeMapPolyline)
-
-        binding.mapView.mapScene.addMapPolyline(routeMapPolyline)
+        binding.mapView.mapScene.removeMapPolyline(routeMapPolyline!!)
+        binding.mapView.mapScene.addMapPolyline(routeMapPolyline!!)
+        binding.mapView.camera.zoomLevel = 12.0
 
 
     }
 
-    // Perform a search for charging stations along the found route.
+    fun reset() {
+        if (routeMapPolyline != null) {
+            binding.mapView.mapScene.removeMapPolyline(routeMapPolyline!!)
+        }
+        restaurantMarkers.forEach {
+            binding.mapView.mapScene.removeMapMarker(it)
+        }
+        restaurantMarkers.clear()
+        restaurantPlaceList.clear()
+        sourceList.clear()
+        destinationList.clear()
+    }
+
     private fun searchAlongARoute(route: Route) {
-        // We specify here that we only want to include results
-        // within a max distance of xx meters from any point of the route.
-//        binding.llLoading.visibility=View.VISIBLE
-        binding.tvDesc.text=getString(R.string.fetching_restaurants)
-        val halfWidthInMeters = 500
-        val routeCorridor = GeoCorridor(route.polyline, halfWidthInMeters)
-        val textQuery = TextQuery("restaurants", routeCorridor, sourceCoordinates)
-        val maxItems = 100
+        binding.llLoading.visibility = View.VISIBLE
+        binding.tvDesc.text = getString(R.string.fetching_restaurants)
+
+        var count=20
+        searchRestaurant(TextQuery(searchKey, route.polyline[0]))
+        searchRestaurant(TextQuery(searchKey, route.polyline[route.polyline.size-1]))
+
+        while (count<route.polyline.size-20){
+            searchRestaurant(TextQuery(searchKey, route.polyline[count]))
+            count+=20
+        }
+
+//        val textQueryRoute = TextQuery(searchKey, route.boundingBox)
+//        val textQuerySourceAndRoute = TextQuery(searchKey, route.polyline.get(getRandomIndex(0, route.polyline.size / 2)))
+//        val textQuerySource = TextQuery(searchKey, sourcePlace.geoCoordinates!!)
+//        val textQueryDestination = TextQuery(searchKey, destinationPlace.geoCoordinates!!)
+//       val textQueryBetweenDestinationAndRoute = TextQuery(searchKey, route.polyline.get(getRandomIndex(0, route.polyline.size / 2)))
+//
+//        searchRestaurant(textQueryRoute)
+//        searchRestaurant(textQuerySource)
+//        searchRestaurant(textQueryDestination)
+//        searchRestaurant(textQuerySourceAndRoute)
+//        searchRestaurant(textQueryBetweenDestinationAndRoute)
+
+    }
+
+    private fun getRandomIndex(start: Int, end: Int): Int {
+        val r = Random()
+        return r.nextInt(end - start) + start
+    }
+
+    private fun searchRestaurant(textQuery: TextQuery) {
+
         val searchOptions = SearchOptions(LanguageCode.EN_US, maxItems)
+
         searchEngine.search(textQuery, searchOptions,
             SearchCallback { searchError, items ->
+                binding.llLoading.visibility = View.GONE
                 if (searchError != null) {
-                    if (searchError == SearchError.POLYLINE_TOO_LONG) {
-                        // Increasing halfWidthInMeters will result in less precise results with the benefit of a less
-                        // complex route shape.
-                        Log.d("Search", "Route too long or halfWidthInMeters too small.")
-                    } else {
-                        Log.d(
-                            "Search",
-                            "No charging stations found along the route. Error: $searchError"
-                        )
+                    if (searchError != SearchError.POLYLINE_TOO_LONG) {
+                        Toast.makeText(
+                            this,
+                            getString(R.string.not_restaurant_found),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                     return@SearchCallback
                 }
 
-                // If error is nil, it is guaranteed that the items will not be nil.
-                Log.d("Search", "Search along route found " + items!!.size + " charging stations:")
-                for (place in items) {
-
-                    addRestaurantMapMarker(place.geoCoordinates!!)
-
-                    Log.d("Search", "Checking Search along route found restaurant: " + place.title)
-
-                    // ...
+                for (place in items!!) {
+                    if (!restaurantList.contains(place.title)) {
+                        restaurantList.add(place.title)
+                        restaurantPlaceList.add(place)
+                        addRestaurantMapMarker(place)
+                        Log.d("Search", "Search along route found restaurant: " + place.title)
+                    }
                 }
-
             })
     }
 
 
-    private fun addRestaurantMapMarker(geoCoordinates: GeoCoordinates) {
-        currentMarker = MapMarker(geoCoordinates)
+    private fun addRestaurantMapMarker(restaurant: Place) {
+        val restaurantMarker = MapMarker(restaurant.geoCoordinates!!)
 
-            binding.mapView.mapScene.removeMapMarker(currentMarker)
+        binding.mapView.mapScene.removeMapMarker(restaurantMarker)
 
         val mapImage = MapImageFactory.fromResource(resources, R.drawable.ic_restaurant)
-        currentMarker.addImage(mapImage, MapMarkerImageStyle())
-        binding.mapView.mapScene.addMapMarker(currentMarker)
+        restaurantMarker.addImage(mapImage, MapMarkerImageStyle())
+        addMetaDataToMarker(restaurantMarker, restaurant.title)
+
+        binding.mapView.mapScene.addMapMarker(restaurantMarker)
+        restaurantMarkers.add(restaurantMarker)
     }
 
     private fun addCurrentMapMarker(geoCoordinates: GeoCoordinates) {
         currentMarker = MapMarker(geoCoordinates)
-            binding.mapView.mapScene.removeMapMarker(currentMarker)
+        binding.mapView.mapScene.removeMapMarker(currentMarker)
 
         val mapImage =
             MapImageFactory.fromResource(resources, R.drawable.ic_current_location_marker)
         currentMarker.addImage(mapImage, MapMarkerImageStyle())
+        addMetaDataToMarker(currentMarker, "Current Location")
         binding.mapView.mapScene.addMapMarker(currentMarker)
     }
 
+    private fun addMetaDataToMarker(marker: MapMarker, data: String) {
+        val metadata = Metadata()
+        metadata.setString("name", data)
+        marker.metadata = metadata
+
+    }
+
     private fun addSourceMapMarker() {
-        sourceMarker = MapMarker(sourceCoordinates)
-
-            binding.mapView.mapScene.removeMapMarker(sourceMarker)
-//            if (routeMapPolyline != null) {
-//                binding.mapView.mapScene.removeMapPolyline(routeMapPolyline)
-//            }
-
+        if (sourceMarker != null) {
+            binding.mapView.mapScene.removeMapMarker(sourceMarker!!)
+        }
+        sourceMarker = MapMarker(sourcePlace.geoCoordinates!!)
 
         val mapImage = MapImageFactory.fromResource(resources, R.drawable.ic_marker)
-
-
-        sourceMarker.addImage(mapImage, MapMarkerImageStyle())
-        binding.mapView.mapScene.addMapMarker(sourceMarker)
+        sourceMarker!!.addImage(mapImage, MapMarkerImageStyle())
+        addMetaDataToMarker(sourceMarker!!, sourcePlace.title)
+        binding.mapView.mapScene.addMapMarker(sourceMarker!!)
     }
 
     private fun addDestinationMapMarker() {
-        destinationMarker = MapMarker(destinationCoordinates)
-            binding.mapView.mapScene.removeMapMarker(destinationMarker)
+
+        if (destinationMarker != null) {
+            binding.mapView.mapScene.removeMapMarker(destinationMarker!!)
+        }
+        destinationMarker = MapMarker(destinationPlace.geoCoordinates!!)
 
         val mapImage = MapImageFactory.fromResource(resources, R.drawable.ic_marker)
-        destinationMarker.addImage(mapImage, MapMarkerImageStyle())
-        binding.mapView.mapScene.addMapMarker(destinationMarker)
+        destinationMarker!!.addImage(mapImage, MapMarkerImageStyle())
+        addMetaDataToMarker(destinationMarker!!, destinationPlace.title)
+
+        binding.mapView.mapScene.addMapMarker(destinationMarker!!)
     }
 
     override fun onPause() {
@@ -470,9 +463,6 @@ class MapsActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-//        if (mapPolyline != null) {
-//            mapScene.removeMapPolyline(mapPolyline)
-//        }
         binding.mapView.onDestroy()
     }
 
@@ -496,8 +486,8 @@ class MapsActivity : AppCompatActivity() {
     }
 
     private fun setTapGestureHandler() {
-       binding. mapView.getGestures()
-            .setTapListener(TapListener { touchPoint -> pickMapMarker(touchPoint) })
+        binding.mapView.gestures.tapListener =
+            TapListener { touchPoint -> pickMapMarker(touchPoint) }
     }
 
     private fun pickMapMarker(touchPoint: Point2D) {
@@ -509,7 +499,44 @@ class MapsActivity : AppCompatActivity() {
                 }
                 val topmostMapMarker =
                     pickMapItemsResult.topmostMarker ?: return@PickMapItemsCallback
-               Toast.makeText(this, "${topmostMapMarker.coordinates.latitude}",Toast.LENGTH_LONG).show()
+                val metadata = topmostMapMarker.metadata
+                if (metadata != null) {
+                    Toast.makeText(this, metadata.getString("name"), Toast.LENGTH_LONG).show()
+                }
+            })
+    }
+
+    fun showRestaurantList(view: View) {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle(getString(R.string.restaurant_along_route))
+
+        builder.setNegativeButton(getString(R.string.cancel))
+        { dialog, which -> dialog.dismiss() }
+
+        builder.setAdapter(PlaceAdapter(this, restaurantPlaceList, true))
+        { dialog, which ->
+            binding.mapView.camera.target =restaurantPlaceList[which].geoCoordinates!!
+            binding.mapView.camera.zoomLevel = 12.0
+
+            dialog.dismiss()
+        }
+
+        builder.show()
+    }
+
+    fun moveToCurrentLocation(view: View) {
+        binding.mapView.mapScene.loadScene(MapStyle.NORMAL_DAY,
+            LoadSceneCallback { errorCode ->
+                if (errorCode == null) {
+                    binding.mapView.camera.target = selectedGeoCoordinates
+                    binding.mapView.camera.zoomLevel = 12.0
+                    mapScene = binding.mapView.mapScene
+                    viewportGeoBox = binding.mapView.camera.boundingBox
+
+
+                } else {
+                    Log.d("Siddhesh", "onLoadScene failed: $errorCode")
+                }
             })
     }
 
