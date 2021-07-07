@@ -1,16 +1,16 @@
 <resources>
-    <string name="app_name">Here Codding Test</string>
-    <string name="title_activity_maps">Map</string>
+    <string name="app_name">Route Restro</string>
+    <string name="title_activity_maps">Route Restro</string>
     <string name="here_access_key_id">f-0-FrdLKmOxZaOsh-v2eg</string>
     <string name="here_access_key_secret">1XVklb1eb94KwTyskb_CT9A2jJPxH65KNx5Xmd64lC9fBErI7zRzFIxrJd3N1nHtOTlTJXh09nH76yGwKcOEfA</string>
     <string name="enter_source_location">Enter Source Location</string>
     <string name="enter_destination_location">Enter Destination Location</string>
     <string name="to">TO</string>
     <string name="view_restaurant_list">View Restaurant List</string>
-    <string name="fetching_current_location">Fetching Current Location...</string>
-    <string name="fetching_restaurants">Fetching Restaurants...</string>
+    <string name="fetching_current_location">Fetching Current Location…</string>
+    <string name="fetching_restaurants">Fetching Restaurants…</string>
     <string name="no_place_found">No Place Found</string>
     <string name="restaurant_along_route">Restaurants Along Your Route</string>
-    <string name="cancel">cancel</string>
+    <string name="cancel">Cancel</string>
     <string name="not_restaurant_found">No restaurant found along the route.</string>
 </resources>

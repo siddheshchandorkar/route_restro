@@ -319,7 +319,7 @@ class MapsActivity : AppCompatActivity() {
 
     }
 
-    fun reset() {
+   private fun reset() {
         if (routeMapPolyline != null) {
             binding.mapView.mapScene.removeMapPolyline(routeMapPolyline!!)
         }
@@ -345,6 +345,7 @@ class MapsActivity : AppCompatActivity() {
             count+=20
         }
 
+        //to get limited restaurant
 //        val textQueryRoute = TextQuery(searchKey, route.boundingBox)
 //        val textQuerySourceAndRoute = TextQuery(searchKey, route.polyline.get(getRandomIndex(0, route.polyline.size / 2)))
 //        val textQuerySource = TextQuery(searchKey, sourcePlace.geoCoordinates!!)
@@ -359,6 +360,9 @@ class MapsActivity : AppCompatActivity() {
 
     }
 
+    /*
+    *  get random index from route polyline
+    * */
     private fun getRandomIndex(start: Int, end: Int): Int {
         val r = Random()
         return r.nextInt(end - start) + start
@@ -497,8 +501,7 @@ class MapsActivity : AppCompatActivity() {
                 if (pickMapItemsResult == null) {
                     return@PickMapItemsCallback
                 }
-                val topmostMapMarker =
-                    pickMapItemsResult.topmostMarker ?: return@PickMapItemsCallback
+                val topmostMapMarker = pickMapItemsResult.topmostMarker ?: return@PickMapItemsCallback
                 val metadata = topmostMapMarker.metadata
                 if (metadata != null) {
                     Toast.makeText(this, metadata.getString("name"), Toast.LENGTH_LONG).show()
